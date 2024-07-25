@@ -21,5 +21,6 @@
  "A100 SXM4 80 GB": {"bandwidth": 2040, "compute": 77.97, "memory": 80},
  "A100X": {"bandwidth": 2040, "compute": 79.63, "memory": 80},
  "L40S": {"bandwidth": 864, "compute": 91.61, "memory": 48},
- "H200": {"bandwidth": 4800, "compute": 1979 , "memory": 141}
+ "H200": {"bandwidth": 4800, "compute": 1979 , "memory": 141, "hopper": true},
+ "Tesla T4": {"bandwidth": 320.0, "compute": 65.13, "memory": 16}
 }
