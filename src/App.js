@@ -875,11 +875,11 @@ function getAllComputedData(
 
             inferenceMemory = convertToMB(
                 2 *
-                    contextLen *
-                    2 *
-                    2 *
-                    parsedConfig["hiddenDim"] *
-                    parsedConfig["num_layers"]
+                contextLen *
+                2 *
+                2 *
+                parsedConfig["hiddenDim"] *
+                parsedConfig["num_layers"]
             );
 
             activationMemory = computeInferenceOnlyActivationMemory(
@@ -899,11 +899,11 @@ function getAllComputedData(
             modelSizeinMB = computeModelSizeGGML(parsedConfig, quantType);
             inferenceMemory = convertToMB(
                 1 *
-                    contextLen *
-                    2 *
-                    2 *
-                    parsedConfig["hiddenDim"] *
-                    parsedConfig["num_layers"]
+                contextLen *
+                2 *
+                2 *
+                parsedConfig["hiddenDim"] *
+                parsedConfig["num_layers"]
             );
             activationMemory = computeInferenceOnlyActivationMemory(
                 contextLen,
@@ -953,12 +953,12 @@ function getAllComputedData(
         // console.log("got gradOpt", gradAndOptMemory);
         console.log(isGradCheckPoint);
         let actFactorGradCheckPoint = 1.0
-        if (isGradCheckPoint === 'yes'){
+        if (isGradCheckPoint === 'yes') {
             actFactorGradCheckPoint = 0.15;
         }
 
-        activationMemory = activationMemory*actFactorGradCheckPoint;
-        
+        activationMemory = activationMemory * actFactorGradCheckPoint;
+
         gradAndOptMemory = convertToMB(gradAndOptMemory);
         totalMemory = modelSizeinMB + gradAndOptMemory + activationMemory;
 
@@ -967,7 +967,7 @@ function getAllComputedData(
         totalMemory = totalMemory + overHead;
     }
 
-    
+
 
     return {
         Total: Math.ceil(totalMemory),
@@ -1007,7 +1007,7 @@ function isValidPositiveInteger(input) {
     return Number.isInteger(num) && num > 0;
 }
 
-function getGPUDataFromJSON() {}
+function getGPUDataFromJSON() { }
 
 function App() {
     // let subtitle;
@@ -1192,7 +1192,7 @@ function App() {
         dropdownCPU: "3600x",
         dropdownDDR: "ddr4",
         isGPUorCPU: "usingGPU",
-        isGradCheckPoint : "no"
+        isGradCheckPoint: "no"
     });
 
     function setDDROptions(value) {
@@ -1212,18 +1212,18 @@ function App() {
         }
     }
 
-    function setTrainPromptLenInfoMessage(value){
-        if (value === 'trn'){
+    function setTrainPromptLenInfoMessage(value) {
+        if (value === 'trn') {
             setShowTrainLenInfo(true);
             // setShowTrainGradientCheck(true);
         }
-        else{
+        else {
             setShowTrainLenInfo(false);
             // setShowTrainGradientCheck(false);
         }
     }
 
-    const handleChangeSelection  = (e) => {
+    const handleChangeSelection = (e) => {
         const { name, value } = e.target;
         setSelections((prevState) => ({
             ...prevState,
@@ -1233,7 +1233,7 @@ function App() {
         if (name === "dropdownCPU") {
             setDDROptions(value);
         }
-        if (name === "dropdownTrnOrNot"){
+        if (name === "dropdownTrnOrNot") {
             setTrainPromptLenInfoMessage(value);
         }
 
@@ -1540,10 +1540,10 @@ function App() {
         let timeIfFlops_in_ms =
             (totalFlopsToken * 1000) / (tera * gpu_compute * 0.85);
         let memoryOrCompute = "compute";
-        if (selections.isGradCheckPoint==='yes'){
+        if (selections.isGradCheckPoint === 'yes') {
             //This factor should be around ~1.5x. To be safe I have kept it as 1.65x
             //Source: https://github.com/huggingface/transformers/issues/25572#issuecomment-1687749561
-            timeIfFlops_in_ms = timeIfFlops_in_ms*1.65;
+            timeIfFlops_in_ms = timeIfFlops_in_ms * 1.65;
         }
         const jsonComputeReturnData = {
             "ms per iteration(forward + backward)":
@@ -1956,7 +1956,7 @@ function App() {
 
         let numGPUsINeed = Math.ceil(
             out["Total"] /
-                (1024 * gpuJSONData[selections.dropdownGPU]["memory"])
+            (1024 * gpuJSONData[selections.dropdownGPU]["memory"])
         );
         // const nameOfGPUForNeed = selections.dropdownGPU + ' GPUs Needed'
         setNumGPUINeed(numGPUsINeed);
@@ -2112,11 +2112,10 @@ function App() {
                                                     setModelName(item);
                                                     setShowSuggestions(false);
                                                 }}
-                                                className={`p-2 ${
-                                                    selectedIdx === index
+                                                className={`p-2 ${selectedIdx === index
                                                         ? "bg-gray-300"
                                                         : "hover:bg-gray-200"
-                                                } cursor-pointer`}
+                                                    } cursor-pointer`}
                                             >
                                                 {item}
                                             </li>
@@ -2341,27 +2340,27 @@ function App() {
                                     </div>
                                 </div>
                                 {showTrainGradientCheck && (<div className="flex pt-2">
-    <div className="flex flex-row pr-6">
-        <label className="font-poppins text-sm pr-2">
-            Gradient Checkpointing?
-        </label>
-        <select
-            className="font-poppins text-sm border border-gray-500"
-            name="isGradCheckPoint"
-            onChange={handleChangeSelection}
-        >
-            <option value="no">
-                No
-            </option>
-            <option value="yes">
-                Yes
-            </option>
-        </select>
-        <div className="font-poppins text-xs ml-3 pt-1 text-blue-700">
-            Only applicable for train
-            </div>
-    </div>
-</div>)}
+                                    <div className="flex flex-row pr-6">
+                                        <label className="font-poppins text-sm pr-2">
+                                            Gradient Checkpointing?
+                                        </label>
+                                        <select
+                                            className="font-poppins text-sm border border-gray-500"
+                                            name="isGradCheckPoint"
+                                            onChange={handleChangeSelection}
+                                        >
+                                            <option value="no">
+                                                No
+                                            </option>
+                                            <option value="yes">
+                                                Yes
+                                            </option>
+                                        </select>
+                                        <div className="font-poppins text-xs ml-3 pt-1 text-blue-700">
+                                            Only applicable for train
+                                        </div>
+                                    </div>
+                                </div>)}
                             </div>
                             <div className="flex flex-col border border-gray-400 p-2 rounded-lg mt-2 hover:border-black">
                                 <div>
@@ -2636,11 +2635,10 @@ function App() {
 
                                                 return (
                                                     <tr
-                                                        className={`${
-                                                            index % 2 === 0
+                                                        className={`${index % 2 === 0
                                                                 ? "bg-blue-100"
                                                                 : "bg-blue-50"
-                                                        }`}
+                                                            }`}
                                                         key={index}
                                                     >
                                                         <td className="py-1 px-2 text-sm border">
@@ -2693,11 +2691,10 @@ function App() {
 
                                                 return (
                                                     <tr
-                                                        className={`${
-                                                            index % 2 === 0
+                                                        className={`${index % 2 === 0
                                                                 ? "bg-violet-100"
                                                                 : "bg-violet-50"
-                                                        }`}
+                                                            }`}
                                                         key={index}
                                                     >
                                                         <td className="py-1 px-2 text-sm border">
@@ -2760,11 +2757,10 @@ function App() {
                                             ).map(([key, value], index) => {
                                                 return (
                                                     <tr
-                                                        className={`${
-                                                            index % 2 === 0
+                                                        className={`${index % 2 === 0
                                                                 ? "bg-teal-100"
                                                                 : "bg-teal-50"
-                                                        }`}
+                                                            }`}
                                                         key={index}
                                                     >
                                                         <td className="py-1 px-2 text-sm border">
@@ -2807,11 +2803,10 @@ function App() {
                                             ).map(([key, value], index) => {
                                                 return (
                                                     <tr
-                                                        className={`${
-                                                            index % 2 === 0
+                                                        className={`${index % 2 === 0
                                                                 ? "bg-teal-100"
                                                                 : "bg-teal-50"
-                                                        }`}
+                                                            }`}
                                                         key={index}
                                                     >
                                                         <td className="py-1 px-2 text-sm border">
