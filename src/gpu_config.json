@@ -8,5 +8,18 @@
  "A-6000": {"bandwidth": 768, "compute": 38.71, "memory": 48},
  "A-4000": {"bandwidth": 768, "compute": 19.17, "memory": 16},
  "P-100": {"bandwidth": 1000, "compute": 19.05, "memory": 12},
- "P-40": {"bandwidth": 364, "compute": 11.76, "memory": 24}
+ "P-40": {"bandwidth": 364, "compute": 11.76, "memory": 24},
+ "H100-CNX": {"bandwidth": 2040, "compute": 53.84, "memory": 80},
+ "H100 PCIe 80GB": {"bandwidth": 2040, "compute": 51.22, "memory": 80},
+ "H100 PCIe 96 GB": {"bandwidth": 3360, "compute": 62.08, "memory": 96},
+ "H100 SXM5 64 GB": {"bandwidth": 2020, "compute": 66.91, "memory": 64},
+ "H100 SXM5 80 GB": {"bandwidth": 3360, "compute": 66.91, "memory": 80},
+ "H100 SXM5 96 GB": {"bandwidth": 3360, "compute": 62.08, "memory": 96},
+ "A100 PCIe 40 GB": {"bandwidth": 1560, "compute": 19.49, "memory": 40},
+ "A100 PCIe 80 GB": {"bandwidth": 1940, "compute": 19.49, "memory": 80},
+ "A100 SXM4 40 GB": {"bandwidth": 1560, "compute": 19.49, "memory": 40},
+ "A100 SXM4 80 GB": {"bandwidth": 2040, "compute": 19.49, "memory": 80},
+ "A100X": {"bandwidth": 2040, "compute": 19.91, "memory": 80},
+ "L40S": {"bandwidth": 864, "compute": 91.61, "memory": 48},
+ "H200": {"bandwidth": 4800, "compute": 67, "memory": 141}
 }

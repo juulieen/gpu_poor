@@ -2394,33 +2394,9 @@ function App() {
                                                 name="dropdownGPU"
                                                 onChange={handleChangeSelection}
                                             >
-                                                <option value="rtx-2060">
-                                                    RTX 2060
-                                                </option>
-                                                <option value="rtx-2070">
-                                                    RTX 2070
-                                                </option>
-                                                <option value="rtx-3060">
-                                                    RTX 3060
-                                                </option>
-                                                <option value="rtx-3090">
-                                                    RTX 3090
-                                                </option>
-                                                <option value="rtx-4060">
-                                                    RTX 4060
-                                                </option>
-                                                <option value="rtx-4090">
-                                                    RTX 4090
-                                                </option>
-                                                <option value="P-100 (12 GB)">
-                                                    P 100
-                                                </option>
-                                                <option value="A-4000">
-                                                    A 4000
-                                                </option>
-                                                <option value="A-6000">
-                                                    A 6000
-                                                </option>
+                                                {Object.keys(gpuJSONData).map((gpu) => (
+                                                    <option value={gpu} key={gpu}>{gpu.toLocaleUpperCase()}</option>
+                                                ))}
                                             </select>
                                         </div>
                                         <div className="pl-5">
