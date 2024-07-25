@@ -1966,25 +1966,6 @@ function App() {
         setBreakDownMemoryJson(out);
     }
 
-    // const handleClick = () => {
-
-    //   const trnVal = selections.dropdownTrnOrNot;
-    //   let totalMemory = 0;
-    //   let size = parseFloat(modelSize);
-    //   if (trnVal==='trn'){
-
-    //   }
-
-    //   console.log(modelSize);
-    //   console.log(isNumberOrFloat(modelSize));
-
-    //   // console.log("clicking");
-    //   // setOutput1(selections.dropdownTrnOrNot + ' ' + selections.dropdownFullOrNot);
-
-    //   // console.log()
-
-    // };
-
     const debouncedSearch = useDebounce(
         async () => {
             console.log('Searching ..', { modelName })
