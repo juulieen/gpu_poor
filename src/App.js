@@ -27,7 +27,6 @@ const ggml_quants = [
     "ggml_QK5_K_M",
     "ggml_Q6_K",
 ];
-// console.log(configPath);
 
 /*
 dropdownTrnOrNot: 'inf', 'trn', 'inf_vLLM','inf_exL','inf_ggml'
@@ -153,21 +152,14 @@ function computeModelSizeGGML(parsedConfig, quant) {
 
 function computeModelSize(parsedConfig) {
     const vocab = parsedConfig["vocab"],
-        heads = parsedConfig["heads"],
         numLayers = parsedConfig["num_layers"],
         hiddenDim = parsedConfig["hiddenDim"],
         interDim = parsedConfig["interDim"];
-
-    // console.log(vocab, heads, numLayers, hiddenDim, interDim);
-    // let fB = floatBytes;
-    // if (quant === 'bnb_int8'){fB = 1;}
-    // if (quant === 'bnb_q4'){fB = 0.5;}
 
     const out =
         vocab * hiddenDim * 2 +
         numLayers * 4 * hiddenDim * hiddenDim +
         numLayers * 3 * interDim * hiddenDim;
-    // console.log("this is out: ", out)
 
     return out;
 }
@@ -335,37 +327,11 @@ function getExtraMemory(parsedConfig, quant, contextLen) {
     return extra_mem;
 }
 
-function getExtraMemoryOld(parsedConfig, quant) {
-    const constant_8_overhead = 200.0,
-        constant_8_extra = 350.0;
-    const constant_4_overhead = 350.0,
-        constant_4_extra = 550.0;
-
-    const common =
-        (10 * parsedConfig.hiddenDim +
-            5 * parsedConfig.hiddenDim +
-            4 * parsedConfig.interDim +
-            2 * parsedConfig.interDim) *
-        parsedConfig.num_layers;
-
-    let extra_mem = 0;
-
-    if (quant === "bnb_int8") {
-        extra_mem = constant_8_overhead * common + constant_8_extra * common;
-    }
-
-    if (quant === "bnb_q4") {
-        extra_mem = constant_4_overhead * common + constant_4_extra * common;
-    }
-
-    console.log("extra mem", extra_mem);
-    return extra_mem;
-}
 
 function getActivationMemory(
     parsedConfig,
     contextLen,
-    floatBytes,
+    fB,
     quant,
     dropdownFullOrNot,
     batchSize = 1
@@ -375,11 +341,7 @@ function getActivationMemory(
         hiddenDim = parsedConfig["hiddenDim"],
         interDim = parsedConfig["interDim"];
 
-    let fB = floatBytes;
     const len = contextLen;
-
-    // if (quant==='bnb_int8'){fB=1;}
-    // if (quant==='bnb_q4'){fB=0.5;}
 
     console.log("activation: ", heads, numLayers, hiddenDim, interDim);
 
@@ -768,16 +730,12 @@ function convertToMBModelSize(value, quant, typeOfTrn) {
     return size + extra;
 }
 
-function convertToBytes(floatType) {
-    return 2.0;
-}
 
-function getAllComputedData(
+function computeMemoryUsage(
     parsedJSONData,
     jsonUploadedData,
     modelSize,
     contextLen,
-    floatType,
     selections,
     setErrorMessage,
     openModal,
@@ -790,10 +748,10 @@ function getAllComputedData(
         gradAndOptMemory = 0;
     let inferenceMemory = 0;
     let totalMemory = 0;
-    const floatBytes = convertToBytes(floatType);
     const quantType = selections.dropdownQuant;
     const trnType = selections.dropdownTrnOrNot;
     const typeOfTrn = selections.dropdownFullOrNot;
+    const floatBytes = 2.0;
 
     //trnType should be trnOrNot
 
@@ -818,20 +776,31 @@ function getAllComputedData(
         return null;
     }
 
-    if (parsedJSONData == null) {
-        if (jsonUploadedData != null) {
-            parsedConfig = sanityUploadedConfig(
-                jsonUploadedData,
+    const retrieveModelConfigFromHfOrUser = (parsedJSONData, jsonUploadedData, openModal, setErrorMessage) => {
+        if (parsedJSONData != null) {
+            // Data is coming from Hf
+            return getParseConfig(
+                parsedJSONData,
                 setErrorMessage,
                 openModal
             );
-            console.log(parsedConfig, "uploaded");
-            if (parsedConfig == null) {
-                return null;
-            }
-            modelSizeinB = computeModelSize(parsedConfig);
         } else {
-            if (!isNumberOrFloat(modelSize)) {
+            // Data is not coming from Hf
+            if (jsonUploadedData != null) {
+                // User uploaded a config
+                const parsedConfig = sanityUploadedConfig(
+                    jsonUploadedData,
+                    setErrorMessage,
+                    openModal
+                );
+                console.log(parsedConfig, "uploaded");
+                return parsedConfig;
+            }
+            if (isNumberOrFloat(modelSize)) {
+                // User entered model size
+                return getDefault(modelSize);
+            } else {
+                // User didn't enter model size nor uploaded a config nor used Hf
                 console.log("error with model size");
                 setErrorMessage(
                     "Hugginface model id not available, enter model size(>0) or upload config"
@@ -839,30 +808,14 @@ function getAllComputedData(
                 openModal();
                 return null;
             }
-
-            parsedConfig = getDefault(modelSize);
-            modelSizeinB = modelSize * billion;
         }
-    } else {
-        parsedConfig = getParseConfig(
-            parsedJSONData,
-            setErrorMessage,
-            openModal
-        );
-        if (parsedConfig == null) {
-            return null;
-        }
-        console.log(parsedConfig);
-        modelSizeinB = computeModelSize(parsedConfig);
     }
 
-    let fB = floatBytes;
-    if (quantType === "bnb_int8") {
-        fB = 1;
+    parsedConfig = retrieveModelConfigFromHfOrUser(parsedJSONData, jsonUploadedData, openModal, setErrorMessage)
+    if (parsedConfig == null) {
+        return null;
     }
-    if (quantType === "bnb_q4" || typeOfTrn === "qlora") {
-        fB = 0.5;
-    }
+    modelSizeinB = computeModelSize(parsedConfig);
     let modelSizeinMB = convertToMBModelSize(
         modelSizeinB,
         quantType,
@@ -881,17 +834,7 @@ function getAllComputedData(
         if (!checkSanity) {
             return null;
         }
-
         if (trnType === "inf" || trnType === "inf_vLLM") {
-            let fB = 2;
-            //If bnb quant
-            if (quantType === "bnb_int8") {
-                fB = 1;
-            }
-            if (quantType === "bnb_q4" || typeOfTrn === "qlora") {
-                fB = 0.5;
-            }
-
             inferenceMemory = convertToMB(
                 2 *
                 contextLen *
@@ -913,8 +856,7 @@ function getAllComputedData(
                 overHead,
                 activationMemory
             );
-        }
-        if (trnType === "inf_ggml") {
+        } else if (trnType === "inf_ggml") {
             modelSizeinMB = computeModelSizeGGML(parsedConfig, quantType);
             inferenceMemory = convertToMB(
                 1 *
@@ -1914,7 +1856,7 @@ function App() {
         let parsedConfig = await retrieveConfigFromHf(modelName);
         if (parsedConfig === null) {
             setErrorMessage(
-                "Failed to fecch config.json. from huggingface. the model may be in restricted access"
+                "Failed to fecth config.json from HF. The model may be in restricted access or not found"
             );
             openModal();
         }
@@ -1928,12 +1870,11 @@ function App() {
             openModal();
         }
 
-        const out = getAllComputedData(
+        const out = computeMemoryUsage(
             parsedConfig,
             jsonData,
             modelSize,
             parseInt(contextLen) + parseInt(promptLen),
-            2,
             selections,
             setErrorMessage,
             openModal,
