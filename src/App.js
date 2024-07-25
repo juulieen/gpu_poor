@@ -2538,7 +2538,7 @@ function App() {
                                 <div className="flex">
                                     <div className="pr-6">
                                         <button
-                                            class="font-poppins border text-sm border-blue-500 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-300"
+                                            className="font-poppins border text-sm border-blue-500 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-300"
                                             onClick={handleClick}
                                         >
                                             Find Memory requirement
@@ -2546,7 +2546,7 @@ function App() {
                                     </div>
                                     <div>
                                         <button
-                                            class="font-poppins border text-sm border-green-500 px-4 py-2 bg-green-100 text-green-700 hover:bg-green-300"
+                                            className="font-poppins border text-sm border-green-500 px-4 py-2 bg-green-100 text-green-700 hover:bg-green-300"
                                             onClick={handleClickTokS}
                                         >
                                             Find ~tokens/s
@@ -2554,7 +2554,7 @@ function App() {
                                     </div>
                                     <div>
                                         <button
-                                            class="font-poppins border text-sm ml-6 border-red-500 px-1 py-2 bg-red-100 text-red-700 hover:bg-red-300"
+                                            className="font-poppins border text-sm ml-6 border-red-500 px-1 py-2 bg-red-100 text-red-700 hover:bg-red-300"
                                             onClick={handleReset}
                                         >
                                             CLEAR
@@ -2562,7 +2562,7 @@ function App() {
                                     </div>
                                     {/* <div className="pl-4 pt-1">
                                 <button
-                                    class="font-poppins border text-xs bg-gray-100 border-gray-500  text-black hover:bg-gray-300"
+                                    className="font-poppins border text-xs bg-gray-100 border-gray-500  text-black hover:bg-gray-300"
                                     onClick={handleReset}
                                 >
                                     Reset
@@ -2571,7 +2571,7 @@ function App() {
                                 </div>
                             </div>
                         </div>
-                        <div class="pl-4 border-l-2 border-gray-400 flex-shrink-0 ml-8">
+                        <div className="pl-4 border-l-2 border-gray-400 flex-shrink-0 ml-8">
                             <div className="font-poppins text-lg font-semibold">
                                 How does
                                 <span className="font-bold text-blue-400">
