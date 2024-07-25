@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import TextInput from "./textBox";
 import Modal from "react-modal";
 import fullText from "./textContent";
@@ -7,13 +7,6 @@ import cpuJSONData from "./cpu_config.json";
 
 const billion = 1000000000;
 const tera = 1000000000 * 1000;
-let configPath = "/gpu_poor/all_configs.json";
-if (
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1"
-) {
-    configPath = "/gpu_poor/all_configs.json";
-}
 const MAX_FILE_SIZE = 500000;
 const ggml_quants = [
     "ggml_QK4_0",
@@ -477,6 +470,32 @@ function checkCombinationTrainInference(
     }
     return true;
 }
+
+function debounce(func, timeout = 300) {
+    let timer;
+    return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { func.apply(this, args); }, timeout);
+    };
+}
+
+const useDebounce = (callback) => {
+    const ref = useRef();
+
+    useEffect(() => {
+        ref.current = callback;
+    }, [callback]);
+
+    const debouncedCallback = useMemo(() => {
+        const func = () => {
+            ref.current?.();
+        };
+
+        return debounce(func, 1000);
+    }, []);
+
+    return debouncedCallback;
+};
 
 function checkCombinationInferenceTok(
     trnType,
@@ -979,21 +998,6 @@ function getAllComputedData(
     };
 }
 
-///Users/rahulchand/gpu_mem/public/all_configs.json
-async function fetchParams(name) {
-    // let output = fetch('https://huggingface.co/meta-llama/Llama-2-7b/raw/main/params.json');
-
-    let response = await fetch(configPath);
-    response = await response.json();
-    // console.log(response.hasOwnProperty(name));
-
-    return response.hasOwnProperty(name) ? response[name] : null;
-}
-
-// function isNumberOrFloat(value) {
-//     return /^-?\d+(\.\d+)?$/.test(value);
-// }
-
 function isNumberOrFloat(value) {
     const num = parseFloat(value);
     return !isNaN(num) && num > 0;
@@ -1032,9 +1036,6 @@ function App() {
     const [fileNameUpload, setFileNameUpload] = useState("");
 
     const [modalIsOpen, setIsOpen] = React.useState(false);
-
-    const [responseCache, setResponseCache] = useState(null);
-    const [responseCacheKeys, setResponseCacheKeys] = useState(null);
 
     const [suggestions, setSuggestions] = useState([]);
     const [selectedIdx, setSelectedIdx] = useState(-1);
@@ -1770,7 +1771,7 @@ function App() {
         return check1 && check2;
     }
 
-    function handleClickTokS() {
+    async function handleClickTokS() {
         // setErrorMessage("To be added");
         // openModal();
         if (
@@ -1830,14 +1831,12 @@ function App() {
         const gpuDataOnlyNum = gpuJSONData[selections.dropdownGPU];
         const cpuDataOnlyNum = cpuJSONData[selections.dropdownCPU];
 
-        let parsedConfig = responseCache.hasOwnProperty(modelName)
-            ? responseCache[modelName]
-            : null;
-
+        let parsedConfig = await retrieveConfigFromHf(modelName);
         if (parsedConfig === null) {
-            setErrorMessage("Huggingface ID not present");
+            setErrorMessage(
+                "Failed to fecth config.json. from HF. the model may not exist or may be in restricted access: " + modelName
+            );
             openModal();
-            return;
         }
 
         if (selections.dropdownTrnOrNot === "trn") {
@@ -1904,7 +1903,7 @@ function App() {
         setShowTableCompute(false);
     }
 
-    async function handleClick() {
+    async function computeMemoryRequirement() {
         if (modelName.includes("GGML") || modelName.includes("GGUF")) {
             setErrorMessage(
                 "If you want info about GGML/GGUF models then enter the normal name & select GGML inference & quant type below. For example, if you want info about llama-2-7b.Q3_K_L.gguf then enter meta-llama/Llama-2-7b in the model name"
@@ -1912,10 +1911,13 @@ function App() {
             openModal();
             return;
         }
-        let parsedConfig = responseCache.hasOwnProperty(modelName)
-            ? responseCache[modelName]
-            : null;
-
+        let parsedConfig = await retrieveConfigFromHf(modelName);
+        if (parsedConfig === null) {
+            setErrorMessage(
+                "Failed to fecch config.json. from huggingface. the model may be in restricted access"
+            );
+            openModal();
+        }
         if (
             !isValidPositiveInteger(contextLen) ||
             !isValidPositiveInteger(promptLen)
@@ -1983,50 +1985,17 @@ function App() {
 
     // };
 
-    useEffect(() => {
-        // Your function here to populate myVariable
-        const fetchData = async () => {
-            // Fetch data or perform some other operation
-            let response = await fetch(configPath);
-            response = await response.json();
-            setResponseCache(response);
-            setResponseCacheKeys(Object.keys(response));
-        };
-
-        fetchData();
-    }, []);
-
-    useEffect(() => {
-        if (modelName && responseCacheKeys) {
-            if (modelName.length > 1) {
-                const filtered = responseCacheKeys.filter((item) =>
-                    item.startsWith(modelName)
-                );
-                setSuggestions(filtered.slice(0, 10));
-            } else {
-                setSuggestions([]);
+    const debouncedSearch = useDebounce(
+        async () => {
+            console.log('Searching ..', { modelName })
+            try {
+                const searchRequest = await fetch(`https://huggingface.co/api/models?search=${modelName}`)
+                const searchRequestJson = await searchRequest.json()
+                setSuggestions(searchRequestJson.map((model) => model.id).slice(0, 10))
+            } catch (error) {
+                console.error(error)
             }
-        } else {
-            setSuggestions([]);
-        }
-    }, [modelName]);
-
-    // useEffect(() => {
-    //     if (modelName) {
-    //         if (modelName.length > 2) {
-    //             const filtered = responseCacheKeys.filter((item) =>
-    //                 item.startsWith(modelName)
-    //             );
-    //             setSuggestions(filtered.slice(0, 10));
-    //         } else {
-    //             setSuggestions([]);
-    //         }
-    //     } else {
-    //         setSuggestions([]);
-    //     }
-    // }, [modelName]);
-
-    // console.log(responseCache);
+        }, 3000);
 
     const handleKeyDown = (e) => {
         if (e.key === "ArrowDown") {
@@ -2098,7 +2067,10 @@ function App() {
                                 <TextInput
                                     className="w-64 font-poppins input border border-black text-sm"
                                     value={modelName}
-                                    setValue={setModelName}
+                                    setValue={(val) => {
+                                        setModelName(val)
+                                        debouncedSearch()
+                                    }}
                                     setChange={setShowSuggestions}
                                     handleKeyDown={handleKeyDown}
                                     placeholder="e.g. meta-llama/Llama-2-7b-hf"
@@ -2113,8 +2085,8 @@ function App() {
                                                     setShowSuggestions(false);
                                                 }}
                                                 className={`p-2 ${selectedIdx === index
-                                                        ? "bg-gray-300"
-                                                        : "hover:bg-gray-200"
+                                                    ? "bg-gray-300"
+                                                    : "hover:bg-gray-200"
                                                     } cursor-pointer`}
                                             >
                                                 {item}
@@ -2514,7 +2486,7 @@ function App() {
                                     <div className="pr-6">
                                         <button
                                             className="font-poppins border text-sm border-blue-500 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-300"
-                                            onClick={handleClick}
+                                            onClick={computeMemoryRequirement}
                                         >
                                             Find Memory requirement
                                         </button>
@@ -2636,8 +2608,8 @@ function App() {
                                                 return (
                                                     <tr
                                                         className={`${index % 2 === 0
-                                                                ? "bg-blue-100"
-                                                                : "bg-blue-50"
+                                                            ? "bg-blue-100"
+                                                            : "bg-blue-50"
                                                             }`}
                                                         key={index}
                                                     >
@@ -2692,8 +2664,8 @@ function App() {
                                                 return (
                                                     <tr
                                                         className={`${index % 2 === 0
-                                                                ? "bg-violet-100"
-                                                                : "bg-violet-50"
+                                                            ? "bg-violet-100"
+                                                            : "bg-violet-50"
                                                             }`}
                                                         key={index}
                                                     >
@@ -2758,8 +2730,8 @@ function App() {
                                                 return (
                                                     <tr
                                                         className={`${index % 2 === 0
-                                                                ? "bg-teal-100"
-                                                                : "bg-teal-50"
+                                                            ? "bg-teal-100"
+                                                            : "bg-teal-50"
                                                             }`}
                                                         key={index}
                                                     >
@@ -2804,8 +2776,8 @@ function App() {
                                                 return (
                                                     <tr
                                                         className={`${index % 2 === 0
-                                                                ? "bg-teal-100"
-                                                                : "bg-teal-50"
+                                                            ? "bg-teal-100"
+                                                            : "bg-teal-50"
                                                             }`}
                                                         key={index}
                                                     >
@@ -2902,3 +2874,15 @@ function App() {
 }
 
 export default App;
+
+async function retrieveConfigFromHf(modelName) {
+    try {
+        const configRequest = await fetch(`https://huggingface.co/${modelName}/resolve/main/config.json`);
+        const configRequestJson = await configRequest.json();
+        console.log({ config: configRequestJson });
+        return configRequestJson;
+    } catch (error) {
+        return null;
+    }
+}
+
