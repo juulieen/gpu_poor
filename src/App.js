@@ -994,8 +994,6 @@ function isValidPositiveInteger(input) {
     return Number.isInteger(num) && num > 0;
 }
 
-function getGPUDataFromJSON() { }
-
 function App() {
     // let subtitle;
     const [modelSize, setModelSize] = useState("");
@@ -1730,6 +1728,7 @@ function App() {
                 "Failed to fecth config.json. from HF. the model may not exist or may be in restricted access: " + modelName
             );
             openModal();
+            return;
         }
 
         if (selections.dropdownTrnOrNot === "trn") {
@@ -2469,6 +2468,22 @@ function App() {
                                                     {numGPUINeed}
                                                 </td>
                                             </tr>
+                                            {Object.entries(gpuJSONData).map(([gpu, value], index) => {
+                                                const gpuNeeded = Math.ceil(
+                                                    totalMemoryShown /
+                                                    (1024 * value["memory"])
+                                                )
+                                                return (
+                                                    <tr className={index % 2 === 0 ? "bg-gray-100" : "bg-gray-200"}>
+                                                        <td className="py-1 px-2 text-sm border">
+                                                            {gpu}
+                                                        </td>
+                                                        <td className="py-1 px-2 text-sm border">
+                                                            {gpuNeeded} Needed
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })}
                                         </tbody>
                                     </table>
                                 </>
@@ -2716,7 +2731,9 @@ export default App;
 
 async function retrieveConfigFromHf(modelName) {
     try {
-        const configRequest = await fetch(`https://huggingface.co/${modelName}/resolve/main/config.json`);
+        const configRequest = await fetch(`https://huggingface.co/${modelName}/resolve/main/config.json`, {headers: {
+            Authorization: `Bearer ${process.env.REACT_APP_HF_API_KEY ?? ''}`
+        }});
         const configRequestJson = await configRequest.json();
         console.log({ config: configRequestJson });
         return configRequestJson;
