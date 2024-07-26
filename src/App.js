@@ -967,8 +967,7 @@ function computeInferanceKVCacheMemory(inferenceMemory, contextLen, parsedConfig
         const k = parsedConfig["num_layers"] * parsedConfig['heads'] * 2 /* 2 is for 1 tensor for key, and 1 for value */;
         // console.log({ n, k, layers: parsedConfig["num_layers"], heads: parsedConfig['heads'], total: n * floatBytes + k * 4 });
         inferenceMemory = convertToMB(n * floatBytes + k * 4 /* 4 is for 4 octets */);
-
-
+        return inferenceMemory;
     }
     inferenceMemory = convertToMB(
         floatBytes *
