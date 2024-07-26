@@ -28,24 +28,20 @@ const ggml_quants = [
     "ggml_Q6_K",
 ];
 
+const FP8_QWANTIZATION_W8A16 = "fp8 w8a16"
+const FP8_QWANTIZATION_W8A8 = "fp8 w8a8"
+const FP8_QWANTIZATION_W8A8_E4M3_E5M2_KV_CACHE = "fp8 w8a8 - E4M3/E5M2 KV Cache"
+const FP8_QWANTS = [
+    FP8_QWANTIZATION_W8A16,
+    FP8_QWANTIZATION_W8A8,
+    FP8_QWANTIZATION_W8A8_E4M3_E5M2_KV_CACHE,
+]
 /*
 dropdownTrnOrNot: 'inf', 'trn', 'inf_vLLM','inf_exL','inf_ggml'
 dropdownFullOrNot: 'lora_trn, 'full_trn', 'qlora'
 dropdownOpt: 'no_opt', 'sgd_opt','adam_opt'
 dropdownQuant: 'no_quant','bnb_int8','bnb_q4', 
 */
-const specialNamesMapping = {
-    "meta-llama/Llama-2-7b": "meta-llama/Llama-2-7b-hf",
-    "meta-llama/Llama-13-7b": "meta-llama/Llama-13-7b-hf",
-    "meta-llama/Llama-2-70b": "meta-llama/Llama-13-70b-hf",
-};
-
-function specialMapping(name) {
-    if (name in specialNamesMapping) {
-        return specialNamesMapping[name];
-    }
-    return name;
-}
 
 function getKey(keys, obj, defaultVal) {
     let toReturn = null;
@@ -66,14 +62,20 @@ function computeOverheadGGML(contextLen) {
     return 0.1 * contextLen;
 }
 
-function computeInferenceOnlyActivationMemory(contextLen, parsedConfig) {
+function computeInferenceOnlyActivationMemory(contextLen, parsedConfig, quantType) {
     const hiddenDim = parsedConfig["hiddenDim"];
     const heads = parsedConfig["heads"];
+    let floatBytes = 2;
 
+    if (quantType === FP8_QWANTIZATION_W8A8
+        || quantType === FP8_QWANTIZATION_W8A8_E4M3_E5M2_KV_CACHE
+    ) {
+        floatBytes = 1;
+    }
+    console.log("floatBytes: ", floatBytes, quantType);
     //return ((1000*4096*5)*2 + (1000*1000*32*2))/(1024*1024)
     return (
-        (contextLen * hiddenDim * 5 * 2 + contextLen * contextLen * heads * 2) /
-        (1024 * 1024)
+        convertToMB(contextLen * hiddenDim * 5 * floatBytes + contextLen * contextLen * heads * floatBytes)
     );
 }
 
@@ -474,7 +476,12 @@ function checkCombinationInferenceTok(
             return false;
         }
     }
-    if (quantType != "no_quant" && trnType === "inf_vLLM") {
+    if (FP8_QWANTS.includes(quantType) && trnType !== "inf_vLLM") {
+        setErrorMessage("FP8 Quantization is supported only for Inferance with vLLM for now");
+        openModal();
+        return false;
+    }
+    if (quantType != "no_quant" && !FP8_QWANTS.includes(quantType) && trnType === "inf_vLLM") {
         setErrorMessage("vLLm doesn't support quant (maybe)");
         openModal();
         return false;
@@ -506,8 +513,15 @@ function checkCombinationInference(
             return false;
         }
     }
-    if (quantType != "no_quant" && trnType === "inf_vLLM") {
-        setErrorMessage("vLLm doesn't support quant (maybe)");
+    if (FP8_QWANTS.includes(quantType) && trnType !== "inf_vLLM") {
+        setErrorMessage("FP8 Quantization is supported only for Inferance with vLLM for now");
+        openModal();
+        return false;
+    }
+    if (quantType !== "no_quant"
+        && !FP8_QWANTS.includes(quantType)
+        && trnType === "inf_vLLM") {
+        setErrorMessage("vLLm doesn't support quant:" + quantType);
         openModal();
         return false;
     }
@@ -711,11 +725,17 @@ function convertToMB(value) {
 function convertToMBModelSize(value, quant, typeOfTrn) {
     let extra = 0;
     let fB = 2;
-    let size = (value * fB) / (1024 * 1024);
+    let size = convertToMB(value * fB);
     if (quant === "bnb_int8" || quant === "bnb_q4" || typeOfTrn === "qlora") {
         extra = 0.06 * size;
     }
-
+    if (quant === FP8_QWANTIZATION_W8A16
+        || quant === FP8_QWANTIZATION_W8A8
+        || quant === FP8_QWANTIZATION_W8A8_E4M3_E5M2_KV_CACHE
+    ) {
+        // fp8 takes 1/2 the memory of fp16 which are default
+        size = size / 2;
+    }
     if (quant === "bnb_int8") {
         size = size / 2;
     }
@@ -835,18 +855,12 @@ function computeMemoryUsage(
             return null;
         }
         if (trnType === "inf" || trnType === "inf_vLLM") {
-            inferenceMemory = convertToMB(
-                2 *
-                contextLen *
-                2 *
-                2 *
-                parsedConfig["hiddenDim"] *
-                parsedConfig["num_layers"]
-            );
+            inferenceMemory = computeInferanceKVCacheMemory(inferenceMemory, contextLen, parsedConfig, quantType);
 
             activationMemory = computeInferenceOnlyActivationMemory(
                 contextLen,
-                parsedConfig
+                parsedConfig,
+                quantType
             );
 
             console.log(
@@ -868,7 +882,7 @@ function computeMemoryUsage(
             );
             activationMemory = computeInferenceOnlyActivationMemory(
                 contextLen,
-                parsedConfig
+                parsedConfig,
             );
             overHead = overHead + computeOverheadGGML(contextLen);
         }
@@ -940,6 +954,32 @@ function computeMemoryUsage(
     };
 }
 
+function computeInferanceKVCacheMemory(inferenceMemory, contextLen, parsedConfig, quantType) {
+    let floatBytes = 2;
+    if (quantType === FP8_QWANTIZATION_W8A8_E4M3_E5M2_KV_CACHE) {
+        // FIXME:
+        // The use of FP8 data in KV cache requires additional scale GPU memory storage, which reduces the expected GPU memory benefits.
+        // https://docs.vllm.ai/en/latest/quantization/fp8_e5m2_kvcache.html#:~:text=The%20int8/int4%20quantization%20scheme%20requires%20additional%20scale%20GPU%20memory%20storage%2C%20which%20reduces%20the%20expected%20GPU%20memory%20benefits.%20The%20FP8%20data%20format%20retains%202~3%20mantissa%20bits%20and%20can%20convert%20float/fp16/bflaot16%20and%20fp8%20to%20each%20other.
+        floatBytes = 1;
+
+        // memory with FP8 : 𝑁*1+𝑘*4 octets, where k is the tensor amount.
+        const n = contextLen * 2 * 2 * parsedConfig["hiddenDim"] * parsedConfig["num_layers"];
+        const k = parsedConfig["num_layers"] * parsedConfig['heads']
+        inferenceMemory = convertToMB(n * floatBytes + k * 4);
+
+
+    }
+    inferenceMemory = convertToMB(
+        floatBytes *
+        contextLen *
+        2 *
+        2 *
+        parsedConfig["hiddenDim"] *
+        parsedConfig["num_layers"]
+    );
+    return inferenceMemory;
+}
+
 function isNumberOrFloat(value) {
     const num = parseFloat(value);
     return !isNaN(num) && num > 0;
@@ -969,13 +1009,9 @@ function App() {
     const [gpuJsonDataForTable, setGPUJSONDataForTable] = useState([]);
     const [cpuJsonDataForTable, setCPUJSONDataForTable] = useState([]);
 
-    // const [breakDownMemory, setBreakDownMemory] = useState(" ");
-
     const [breakDownMemoryJson, setBreakDownMemoryJson] = useState([]);
 
     const [errorMessage, setErrorMessage] = useState("");
-
-    const [fileNameUpload, setFileNameUpload] = useState("");
 
     const [modalIsOpen, setIsOpen] = React.useState(false);
 
@@ -985,13 +1021,11 @@ function App() {
 
     const [numGPU, setNumGPU] = useState(1);
     const [numGPUINeed, setNumGPUINeed] = useState(null);
-    const [memReqHardwareName, setMemReqHardwareName] = useState("");
     const [compReqHardwareName, setCompReqHardwareName] = useState("");
 
     const [compReqHardwareNameBefore, setCompReqHardwareNameBefore] =
         useState("");
 
-    const [numOffload, setNumOffLoad] = useState(1);
 
     const [computedTokenPerSecond, setComputedTokenPerSecond] = useState(1);
 
@@ -1019,14 +1053,6 @@ function App() {
 
     const [faqOpen, setFaqOpen] = useState(false);
 
-    // const th_css = "py-2 px-4 border bg-gray-200 text-gray-600 ";
-
-    // const jsonDataSample = [
-    //     { index: 1, name: "Alice", value: 30 },
-    //     { index: 2, name: "Bob", value: 40 },
-    //     { index: 3, name: "Carol", value: 50 },
-    // ];
-
     function openModal() {
         setIsOpen(true);
     }
@@ -1034,13 +1060,6 @@ function App() {
     function closeModal() {
         setIsOpen(false);
     }
-
-    const handleFileClear = (event) => {
-        setFileNameUpload("");
-        setJsonData(null);
-        // setTotalMemoryShown("");
-        // setBreakDownMemory("");
-    };
 
     const [displayedText, setDisplayedText] = useState("");
     const [isVisible, setIsVisible] = useState(true);
@@ -1100,32 +1119,6 @@ function App() {
         };
     }, []);
 
-    const handleFileChange = (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            // Check file size
-            if (file.size > MAX_FILE_SIZE) {
-                alert("File is too large. Please upload a smaller JSON file.");
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const json = JSON.parse(e.target.result);
-                    setJsonData(json);
-                    event.target.value = null;
-                } catch (error) {
-                    console.error("Error parsing JSON:", error);
-                    alert("Invalid JSON file.");
-                }
-            };
-            setFileNameUpload(file.name);
-            reader.readAsText(file);
-            // console.log(jsonData);
-        }
-    };
-
     const [selections, setSelections] = useState({
         dropdownTrnOrNot: "inf",
         dropdownFullOrNot: "full_trn",
@@ -1158,11 +1151,9 @@ function App() {
     function setTrainPromptLenInfoMessage(value) {
         if (value === 'trn') {
             setShowTrainLenInfo(true);
-            // setShowTrainGradientCheck(true);
         }
         else {
             setShowTrainLenInfo(false);
-            // setShowTrainGradientCheck(false);
         }
     }
 
@@ -1181,12 +1172,6 @@ function App() {
         }
 
     };
-
-    // const handleChangeInText1 = (event) => {
-    //   setModelSize(event.target.value);
-    // };
-
-    const [output1, setOutput1] = useState("");
 
     function enchanceGPUJSONData(onlyNumGPUJsonData) {
         const newJsonData = {
@@ -1211,23 +1196,6 @@ function App() {
         // console.log("My data");
         // console.log(newJsonData);
         return newJsonData;
-    }
-
-    // function getTotalFlops(parsedConfig){
-
-    //     let totalFlops = 0;
-    //     totalFlops += vocab*hiddenDim*2; //embedding
-    //     totalFlops += hiddenDim*hiddenDim*2 //qkvo
-
-    // }
-
-    function getTotalFlopsForKV(parsedConfig, batchSize, contextLen) {
-        const hidDim = parsedConfig["hiddenDim"];
-        return 2 * contextLen * contextLen * hidDim * batchSize;
-    }
-
-    function convertGBToByte(sizeInGB) {
-        return sizeInGB * 1024 * 1024 * 1024;
     }
 
     function convertByteToGB(sizeInByte) {
@@ -1617,11 +1585,6 @@ function App() {
         let totalFlopsToken =
             2 * memoryTransfer + totalLen * hiddenDim * 2 * numLayers * 2 * 2;
 
-        // console.log(
-        //     2 * memoryTransfer,
-        //     totalLen * hiddenDim * 2 * numLayers * 2
-        // );
-
         totalFlopsToken = batchSize * totalFlopsToken;
         let timeIfFlops_in_ms =
             (totalFlopsToken * 1000) / (tera * gpu_compute * 0.85);
@@ -1714,8 +1677,6 @@ function App() {
     }
 
     async function handleClickTokS() {
-        // setErrorMessage("To be added");
-        // openModal();
         if (
             !isValidPositiveInteger(contextLen) ||
             !isValidPositiveInteger(promptLen)
@@ -1750,13 +1711,6 @@ function App() {
             return;
         }
 
-        // if (selections.dropdownTrnOrNot === "trn") {
-        //     setErrorMessage(
-        //         "Token/s doesn't make sense for training, as whole sequence is generated at once. But how much time will one forward/backward pass take makese sense. I haven't added that yet."
-        //     );
-        //     openModal();
-        //     return;
-        // }
         if (
             selections.dropdownTrnOrNot === "trn" &&
             selections.isGPUorCPU === "usingCPU"
@@ -1765,10 +1719,6 @@ function App() {
             openModal();
             return;
         }
-
-        // console.log(gpuJSONData);
-        // console.log(cpuJSONData);
-        // console.log(selections.dropdownGPU);
 
         const gpuDataOnlyNum = gpuJSONData[selections.dropdownGPU];
         const cpuDataOnlyNum = cpuJSONData[selections.dropdownCPU];
@@ -1830,7 +1780,6 @@ function App() {
     }
 
     async function handleReset() {
-        setFileNameUpload("");
         setJsonData(null);
         // setTotalMemoryShown("");
         // setBreakDownMemory("");
@@ -1886,24 +1835,15 @@ function App() {
             return;
         }
 
-        // setTotalMemoryShown(`Total Memory: ${out["Total"]} MB`);
-        // const jsonOut = JSON.stringify(out);
-        // setBreakDownMemory(`Breakdown(in MB): ${jsonOut}`);
         setTotalMemoryShown(out["Total"]);
 
         setShowTable(true);
-
-        // setGPUJSONDataForTable(
-        //     enchanceGPUJSONData(gpuJSONData[selections.dropdownGPU])
-        // );
 
         let numGPUsINeed = Math.ceil(
             out["Total"] /
             (1024 * gpuJSONData[selections.dropdownGPU]["memory"])
         );
-        // const nameOfGPUForNeed = selections.dropdownGPU + ' GPUs Needed'
         setNumGPUINeed(numGPUsINeed);
-        setMemReqHardwareName(selections.dropdownGPU);
         setBreakDownMemoryJson(out);
     }
 
@@ -2031,35 +1971,6 @@ function App() {
                                         placeholder="e.g. for llama-7b enter 7"
                                     />
                                 </div>
-                                {/* <div className="text-sm pr-4 pb-1">OR</div> */}
-                                {/* <div className="flex">
-                            <div>
-                                <input
-                                    type="file"
-                                    id="fileInput"
-                                    accept=".json"
-                                    onChange={handleFileChange}
-                                    className="hidden"
-                                />
-                                <label
-                                    htmlFor="fileInput"
-                                    className="text-sm font-poppins px-1 py-1 bg-gray-200 border border-gray-300 cursor-pointer hover:bg-gray-300"
-                                >
-                                    Upload model config
-                                </label>
-                                <span className="text-sm font-serif underline">
-                                    {fileNameUpload}
-                                </span>
-                            </div>
-                            <div className="pl-6">
-                                <button
-                                    className="text-xs font-poppins bg-gray-100   border border-gray-300 cursor-pointer hover:bg-gray-300"
-                                    onClick={handleFileClear}
-                                >
-                                    Clear file
-                                </button>
-                            </div>
-                        </div> */}
                             </div>
 
                             <br></br>
@@ -2151,6 +2062,12 @@ function App() {
                                             <option value="bnb_q4">
                                                 bnb int4
                                             </option>
+                                            <optgroup label="-----"></optgroup>
+                                            {FP8_QWANTS.map((val) => (
+                                                <option value={val} key={val}>
+                                                    {val}
+                                                </option>
+                                            ))}
 
                                             <optgroup label="-----"></optgroup>
                                             <option value="ggml_Q2_K">
@@ -2490,7 +2407,6 @@ function App() {
                                 <>
                                     <div className="text-sm font-poppins font-bold">
                                         Memory Requirement:{" "}
-                                        {/* {memReqHardwareName} */}
                                     </div>
                                     <table className="min-w-1/2 bg-white border-collapse border-2 border-black font-poppins">
                                         <tbody>
