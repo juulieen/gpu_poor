@@ -964,8 +964,9 @@ function computeInferanceKVCacheMemory(inferenceMemory, contextLen, parsedConfig
 
         // memory with FP8 : 𝑁*1+𝑘*4 octets, where k is the tensor amount.
         const n = contextLen * 2 * 2 * parsedConfig["hiddenDim"] * parsedConfig["num_layers"];
-        const k = parsedConfig["num_layers"] * parsedConfig['heads']
-        inferenceMemory = convertToMB(n * floatBytes + k * 4);
+        const k = parsedConfig["num_layers"] * parsedConfig['heads'] * 2 /* 2 is for 1 tensor for key, and 1 for value */;
+        // console.log({ n, k, layers: parsedConfig["num_layers"], heads: parsedConfig['heads'], total: n * floatBytes + k * 4 });
+        inferenceMemory = convertToMB(n * floatBytes + k * 4 /* 4 is for 4 octets */);
 
 
     }
