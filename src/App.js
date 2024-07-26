@@ -1851,7 +1851,7 @@ function App() {
         async () => {
             console.log('Searching ..', { modelName })
             try {
-                const searchRequest = await fetch(`https://huggingface.co/api/models?search=${modelName}`)
+                const searchRequest = await fetch(`https://huggingface.co/api/models?limit=10&search=${modelName}`)
                 const searchRequestJson = await searchRequest.json()
                 setSuggestions(searchRequestJson.map((model) => model.id).slice(0, 10))
             } catch (error) {
@@ -2203,6 +2203,7 @@ function App() {
                                                 className="font-poppins text-sm border border-gray-500"
                                                 name="dropdownGPU"
                                                 onChange={handleChangeSelection}
+                                                defaultValue={selections.dropdownGPU}
                                             >
                                                 {Object.keys(gpuJSONData).map((gpu) => (
                                                     <option value={gpu} key={gpu}>{gpu.toLocaleUpperCase()}</option>
