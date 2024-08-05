@@ -7,7 +7,6 @@ import cpuJSONData from "./cpu_config.json";
 
 const billion = 1000000000;
 const tera = 1000000000 * 1000;
-const MAX_FILE_SIZE = 500000;
 const ggml_quants = [
     "ggml_QK4_0",
     "ggml_QK4_1",
@@ -82,7 +81,6 @@ function computeInferenceOnlyActivationMemory(contextLen, parsedConfig, quantTyp
 //floatBytes, quant
 function computeModelSizeGGML(parsedConfig, quant) {
     const vocab = parsedConfig["vocab"],
-        heads = parsedConfig["heads"],
         numLayers = parsedConfig["num_layers"],
         hiddenDim = parsedConfig["hiddenDim"],
         interDim = parsedConfig["interDim"];
@@ -403,7 +401,7 @@ function checkCombinationTrainInferenceTok(
     //     openModal();
     //     return false;
     // }
-    if (typeOfTrn === "qlora" && quantType != "no_quant") {
+    if (typeOfTrn === "qlora" && quantType !== "no_quant") {
         setErrorMessage(
             "QLoRA is 4bit explicit. No need to select a quant type if you are training using QLoRA. Set it to 'None'"
         );
@@ -425,7 +423,7 @@ function checkCombinationTrainInference(
         openModal();
         return false;
     }
-    if (typeOfTrn === "qlora" && quantType != "no_quant") {
+    if (typeOfTrn === "qlora" && quantType !== "no_quant") {
         setErrorMessage(
             "QLoRA is 4bit explicit. No need to select a quant type if you are training using QLoRA. Set it to 'None'"
         );
@@ -468,7 +466,7 @@ function checkCombinationInferenceTok(
     openModal
 ) {
     if (ggml_quants.includes(quantType)) {
-        if (trnType != "inf_ggml") {
+        if (trnType !== "inf_ggml") {
             setErrorMessage(
                 "Invalid combination of inference type/quantization"
             );
@@ -481,7 +479,7 @@ function checkCombinationInferenceTok(
         openModal();
         return false;
     }
-    if (quantType != "no_quant" && !FP8_QWANTS.includes(quantType) && trnType === "inf_vLLM") {
+    if (quantType !== "no_quant" && !FP8_QWANTS.includes(quantType) && trnType === "inf_vLLM") {
         setErrorMessage("vLLm doesn't support quant (maybe)");
         openModal();
         return false;
@@ -505,7 +503,7 @@ function checkCombinationInference(
     openModal
 ) {
     if (ggml_quants.includes(quantType)) {
-        if (trnType != "inf_ggml") {
+        if (trnType !== "inf_ggml") {
             setErrorMessage(
                 "Invalid combination of inference type/quantization"
             );
@@ -618,7 +616,7 @@ function sanityUploadedConfig(jsonUploadedData, setErrorMessage, openModal) {
 
 function getParseConfig(parsedJSONData, setErrorMessage, openModal) {
     console.log(Object.keys(parsedJSONData).length);
-    if (Object.keys(parsedJSONData).length == 0) {
+    if (Object.keys(parsedJSONData).length === 0) {
         setErrorMessage(
             "Huggingface config of this id doesn't have correct keys. e.g. this is a ggml model. Please upload your config in correct format"
         );
@@ -722,7 +720,7 @@ function convertToMB(value) {
     return value / (1024 * 1024);
 }
 
-function convertToMBModelSize(value, quant, typeOfTrn) {
+function convertToMBModelSize(value, quant, typeOfTrn, parsedConfig) {
     let extra = 0;
     let fB = 2;
     let size = convertToMB(value * fB);
@@ -733,6 +731,8 @@ function convertToMBModelSize(value, quant, typeOfTrn) {
         || quant === FP8_QWANTIZATION_W8A8
         || quant === FP8_QWANTIZATION_W8A8_E4M3_E5M2_KV_CACHE
     ) {
+        const nbTensor = parsedConfig["num_layers"] * parsedConfig['heads'] * 2;
+        size = size / 2 + nbTensor * 4;
         // fp8 takes 1/2 the memory of fp16 which are default
         size = size / 2;
     }
@@ -839,12 +839,13 @@ function computeMemoryUsage(
     let modelSizeinMB = convertToMBModelSize(
         modelSizeinB,
         quantType,
-        typeOfTrn
+        typeOfTrn,
+        parsedConfig
     );
     // console.log(modelSizeinB);
 
     //!Inference
-    if (trnType != "trn") {
+    if (trnType !== "trn") {
         let checkSanity = checkCombinationInference(
             trnType,
             quantType,
@@ -1044,7 +1045,6 @@ function App() {
         useState(0);
 
     const [showTrainLenInfo, setShowTrainLenInfo] = useState(true);
-    const [showTrainGradientCheck, setShowTrainGradientCheck] = useState(true);
 
     const gpuTableRef = React.useRef(null);
     const cpuTableRef = React.useRef(null);
@@ -1063,7 +1063,6 @@ function App() {
     const [isVisible, setIsVisible] = useState(true);
     const intervalIdRef = useRef(null);
     const wordIndexRef = useRef(0);
-    const timeoutIdRef = useRef(null);
 
     const handleClickGenerateText = () => {
         let token_per_second = parseInt(tokenPerSecond, 10);
@@ -1077,9 +1076,6 @@ function App() {
         // Clear any existing interval before setting up a new one
         if (intervalIdRef.current) {
             clearInterval(intervalIdRef.current);
-        }
-        if (timeoutIdRef.current) {
-            clearTimeout(timeoutIdRef.current);
         }
 
         intervalIdRef.current = setInterval(() => {
@@ -1099,9 +1095,6 @@ function App() {
         if (intervalIdRef.current) {
             clearInterval(intervalIdRef.current);
         }
-        if (timeoutIdRef.current) {
-            clearTimeout(timeoutIdRef.current);
-        }
         setDisplayedText("");
         setIsVisible(false);
     };
@@ -1110,9 +1103,6 @@ function App() {
         return () => {
             if (intervalIdRef.current) {
                 clearInterval(intervalIdRef.current);
-            }
-            if (timeoutIdRef.current) {
-                clearTimeout(timeoutIdRef.current);
             }
         };
     }, []);
@@ -1132,15 +1122,15 @@ function App() {
     function setDDROptions(value) {
         let cpuSpecs = cpuJSONData[value];
         // console.log("calling: ", cpuSpecs);
-        if (cpuSpecs["ddr4"] == 1 && cpuSpecs["ddr5"] == 1) {
+        if (cpuSpecs["ddr4"] === 1 && cpuSpecs["ddr5"] === 1) {
             setShowDDR([1, 1]);
             return;
         }
-        if (cpuSpecs["ddr4"] == 1) {
+        if (cpuSpecs["ddr4"] === 1) {
             setShowDDR([1, 0]);
             return;
         }
-        if (cpuSpecs["ddr5"] == 1) {
+        if (cpuSpecs["ddr5"] === 1) {
             setShowDDR([0, 1]);
             return;
         }
@@ -1376,10 +1366,8 @@ function App() {
         openModal
     ) {
         //! Training is most of the time compute bound
-        const gpu_bandwidth = gpuDataOnlyNum["bandwidth"];
         const gpu_compute = gpuDataOnlyNum["compute"];
 
-        const trnType = selections.dropdownTrnOrNot;
         const quantType = selections.dropdownQuant;
         const totalLen = parseInt(promptLen) + parseInt(contextLen);
 
@@ -1692,7 +1680,7 @@ function App() {
 
         if (
             selections.isGPUorCPU === "usingCPU" &&
-            selections.dropdownTrnOrNot != "inf_ggml"
+            selections.dropdownTrnOrNot !== "inf_ggml"
         ) {
             setErrorMessage(
                 "Inference with CPU only makes applicable(sensible) for GGML"
@@ -2149,7 +2137,7 @@ function App() {
                                         />
                                     </div>
                                 </div>
-                                {showTrainGradientCheck && (<div className="flex pt-2">
+                                <div className="flex pt-2">
                                     <div className="flex flex-row pr-6">
                                         <label className="font-poppins text-sm pr-2">
                                             Gradient Checkpointing?
@@ -2170,7 +2158,7 @@ function App() {
                                             Only applicable for train
                                         </div>
                                     </div>
-                                </div>)}
+                                </div>
                             </div>
                             <div className="flex flex-col border border-gray-400 p-2 rounded-lg mt-2 hover:border-black">
                                 <div>
@@ -2537,14 +2525,14 @@ function App() {
                                     <div className="text-xs whitespace-normal overflow-hidden max-w-xl font-poppins text-red-500">
                                         {showTableComputeDisclaimer}
                                     </div>
-                                    {showTableComputeSmallInfo == 1 && (
+                                    {showTableComputeSmallInfo === 1 && (
                                         <div className="text-xs font-poppins text-blue-700">
                                             Check above to see how{" "}
                                             {computedTokenPerSecond} token/s
                                             looks like
                                         </div>
                                     )}
-                                    {showTableComputeSmallInfo == 2 && (
+                                    {showTableComputeSmallInfo === 2 && (
                                         <div className="text-xs font-poppins text-blue-700">
                                             For train, generate length = 1.
                                             Since training is next token pred.
@@ -2731,9 +2719,11 @@ export default App;
 
 async function retrieveConfigFromHf(modelName) {
     try {
-        const configRequest = await fetch(`https://huggingface.co/${modelName}/resolve/main/config.json`, {headers: {
-            Authorization: `Bearer ${process.env.REACT_APP_HF_API_KEY ?? ''}`
-        }});
+        const configRequest = await fetch(`https://huggingface.co/${modelName}/resolve/main/config.json`, {
+            headers: {
+                Authorization: `Bearer ${process.env.REACT_APP_HF_API_KEY ?? ''}`
+            }
+        });
         const configRequestJson = await configRequest.json();
         console.log({ config: configRequestJson });
         return configRequestJson;
