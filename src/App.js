@@ -42,6 +42,10 @@ dropdownOpt: 'no_opt', 'sgd_opt','adam_opt'
 dropdownQuant: 'no_quant','bnb_int8','bnb_q4', 
 */
 
+function convertByteToMB(sizeInByte) {
+    return sizeInByte / (1024 * 1024);
+}
+
 function getKey(keys, obj, defaultVal) {
     let toReturn = null;
     for (const key of keys) {
@@ -74,7 +78,7 @@ function computeInferenceOnlyActivationMemory(contextLen, parsedConfig, quantTyp
     console.log("floatBytes: ", floatBytes, quantType);
     //return ((1000*4096*5)*2 + (1000*1000*32*2))/(1024*1024)
     return (
-        convertToMB(contextLen * hiddenDim * 5 * floatBytes + contextLen * contextLen * heads * floatBytes)
+        convertByteToMB(contextLen * hiddenDim * 5 * floatBytes + contextLen * contextLen * heads * floatBytes)
     );
 }
 
@@ -156,12 +160,10 @@ function computeModelSize(parsedConfig) {
         hiddenDim = parsedConfig["hiddenDim"],
         interDim = parsedConfig["interDim"];
 
-    const out =
-        vocab * hiddenDim * 2 +
+    return vocab * hiddenDim * 2 +
         numLayers * 4 * hiddenDim * hiddenDim +
         numLayers * 3 * interDim * hiddenDim;
 
-    return out;
 }
 
 function getGradOptMemory(
@@ -374,10 +376,10 @@ function getActivationMemory(
     const total_per_layer = attn_per_layer + ffn_per_layer + norm + lora;
     console.log(
         "total per layer: ",
-        convertToMB(attn_per_layer),
-        convertToMB(ffn_per_layer),
-        convertToMB(norm),
-        convertToMB(lora)
+        convertByteToMB(attn_per_layer),
+        convertByteToMB(ffn_per_layer),
+        convertByteToMB(norm),
+        convertByteToMB(lora)
     );
 
     //total per layer: 4.2724609375 5.55419921875 6.409454345703125 8.02001953125
@@ -716,14 +718,10 @@ function getDefault(modelSize) {
     };
 }
 
-function convertToMB(value) {
-    return value / (1024 * 1024);
-}
-
 function convertToMBModelSize(value, quant, typeOfTrn, parsedConfig) {
     let extra = 0;
     let fB = 2;
-    let size = convertToMB(value * fB);
+    let size = convertByteToMB(value * fB);
     if (quant === "bnb_int8" || quant === "bnb_q4" || typeOfTrn === "qlora") {
         extra = 0.06 * size;
     }
@@ -731,10 +729,17 @@ function convertToMBModelSize(value, quant, typeOfTrn, parsedConfig) {
         || quant === FP8_QWANTIZATION_W8A8
         || quant === FP8_QWANTIZATION_W8A8_E4M3_E5M2_KV_CACHE
     ) {
-        const nbTensor = parsedConfig["num_layers"] * parsedConfig['heads'] * 2;
-        size = size / 2 + nbTensor * 4;
         // fp8 takes 1/2 the memory of fp16 which are default
         size = size / 2;
+        // Scaling Factor
+        const nbTensor = parsedConfig["num_layers"] * parsedConfig['heads'] * 2;
+        // https://docs.vllm.ai/en/latest/quantization/fp8.html
+        // "activation_scheme": "dynamic"
+        const nbScaleFactor = 1; // weight_scale
+        // "activation_scheme": "static"
+        // const nbScaleFactor = 2; // weight_scale, input_scale
+        const sizeOfScaleFactorfp32 = 4;
+        extra = convertByteToMB(nbTensor * nbScaleFactor * sizeOfScaleFactorfp32);
     }
     if (quant === "bnb_int8") {
         size = size / 2;
@@ -873,7 +878,7 @@ function computeMemoryUsage(
             );
         } else if (trnType === "inf_ggml") {
             modelSizeinMB = computeModelSizeGGML(parsedConfig, quantType);
-            inferenceMemory = convertToMB(
+            inferenceMemory = convertByteToMB(
                 1 *
                 contextLen *
                 2 *
@@ -912,7 +917,7 @@ function computeMemoryUsage(
             batchSize
         );
 
-        activationMemory = convertToMB(activationMemory);
+        activationMemory = convertByteToMB(activationMemory);
         // console.log("got activation", activationMemory);
 
         gradAndOptMemory = getGradOptMemory(
@@ -935,7 +940,7 @@ function computeMemoryUsage(
 
         activationMemory = activationMemory * actFactorGradCheckPoint;
 
-        gradAndOptMemory = convertToMB(gradAndOptMemory);
+        gradAndOptMemory = convertByteToMB(gradAndOptMemory);
         totalMemory = modelSizeinMB + gradAndOptMemory + activationMemory;
 
         console.log("got total", totalMemory);
@@ -956,24 +961,20 @@ function computeMemoryUsage(
 }
 
 function computeInferanceKVCacheMemory(inferenceMemory, contextLen, parsedConfig, quantType) {
-    let floatBytes = 2;
+    const fp16Bytes = 2
+    const nbTensorForKeyAndValue = 2;
     if (quantType === FP8_QWANTIZATION_W8A8_E4M3_E5M2_KV_CACHE) {
-        // FIXME:
-        // The use of FP8 data in KV cache requires additional scale GPU memory storage, which reduces the expected GPU memory benefits.
-        // https://docs.vllm.ai/en/latest/quantization/fp8_e5m2_kvcache.html#:~:text=The%20int8/int4%20quantization%20scheme%20requires%20additional%20scale%20GPU%20memory%20storage%2C%20which%20reduces%20the%20expected%20GPU%20memory%20benefits.%20The%20FP8%20data%20format%20retains%202~3%20mantissa%20bits%20and%20can%20convert%20float/fp16/bflaot16%20and%20fp8%20to%20each%20other.
-        floatBytes = 1;
-
-        // memory with FP8 : 𝑁*1+𝑘*4 octets, where k is the tensor amount.
-        const n = contextLen * 2 * 2 * parsedConfig["hiddenDim"] * parsedConfig["num_layers"];
-        const k = parsedConfig["num_layers"] * parsedConfig['heads'] * 2 /* 2 is for 1 tensor for key, and 1 for value */;
-        // console.log({ n, k, layers: parsedConfig["num_layers"], heads: parsedConfig['heads'], total: n * floatBytes + k * 4 });
-        inferenceMemory = convertToMB(n * floatBytes + k * 4 /* 4 is for 4 octets */);
+        const fp8Bytes = 1;
+        const kvCacheMemory = contextLen * nbTensorForKeyAndValue * fp8Bytes * 2 * parsedConfig["hiddenDim"] * parsedConfig["num_layers"];
+        const KvCacheScalefp32Size = 4; // 4 bytes
+        const kvCacheScaleFactor = parsedConfig["num_layers"] * parsedConfig['heads'] * nbTensorForKeyAndValue * KvCacheScalefp32Size;
+        inferenceMemory = convertByteToMB(kvCacheMemory + kvCacheScaleFactor);
         return inferenceMemory;
     }
-    inferenceMemory = convertToMB(
-        floatBytes *
+    inferenceMemory = convertByteToMB(
+        fp16Bytes *
         contextLen *
-        2 *
+        nbTensorForKeyAndValue *
         2 *
         parsedConfig["hiddenDim"] *
         parsedConfig["num_layers"]
@@ -1188,10 +1189,6 @@ function App() {
 
     function convertByteToGB(sizeInByte) {
         return sizeInByte / (1024 * 1024 * 1024);
-    }
-
-    function convertByteToMB(sizeInByte) {
-        return sizeInByte / (1024 * 1024);
     }
 
     function getFloatRatio_F16(quant) {
